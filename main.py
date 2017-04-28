@@ -3,6 +3,7 @@ import model
 
 FLAGS = tf.app.flags.FLAGS
 
+tf.app.flags.DEFINE_string('infer', '', """ checkpoint file """)
 tf.app.flags.DEFINE_string('testing', '', """ checkpoint file """)
 tf.app.flags.DEFINE_string('finetune', '', """ finetune checkpoint file """)
 tf.app.flags.DEFINE_integer('batch_size', "5", """ batch_size """)
@@ -19,7 +20,11 @@ tf.app.flags.DEFINE_integer('num_class', "11", """ total class number """)
 tf.app.flags.DEFINE_boolean('save_image', True, """ whether to save predicted image """)
 
 def checkArgs():
-    if FLAGS.testing != '':
+    if FLAGS.infer != '':
+        print('The model is set to Infer')
+        print("check point file: %s"%FLAGS.infer)
+        print("Infer dir: %s"%FLAGS.test_dir)
+    elif FLAGS.testing != '':
         print('The model is set to Testing')
         print("check point file: %s"%FLAGS.testing)
         print("CamVid testing dir: %s"%FLAGS.test_dir)
@@ -41,7 +46,9 @@ def checkArgs():
 
 def main(args):
     checkArgs()
-    if FLAGS.testing:
+    if FLAGS.infer:
+        model.infer(FLAGS)
+    elif FLAGS.testing:
         model.test(FLAGS)
     elif FLAGS.finetune:
         model.training(FLAGS, is_finetune=True)

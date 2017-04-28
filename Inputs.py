@@ -6,6 +6,8 @@ import numpy as np
 import math
 import skimage
 import skimage.io
+from skimage import transform
+from skimage.viewer import ImageViewer
 
 IMAGE_HEIGHT = 360
 IMAGE_WIDTH = 480
@@ -88,14 +90,17 @@ def CamVid_reader(filename_queue):
   return image, label
 
 def get_filename_list(path):
+  dir = os.path.dirname(path)
   fd = open(path)
   image_filenames = []
   label_filenames = []
   filenames = []
   for i in fd:
     i = i.strip().split(" ")
-    image_filenames.append(i[0])
-    label_filenames.append(i[1])
+    if len(i) > 0:
+      image_filenames.append(dir + "/" + i[0])
+    if len(i) > 1:
+      label_filenames.append(dir + "/" + i[1])
   return image_filenames, label_filenames
 
 def CamVidInputs(image_filenames, label_filenames, batch_size):
@@ -118,12 +123,34 @@ def CamVidInputs(image_filenames, label_filenames, batch_size):
   return _generate_image_and_label_batch(reshaped_image, label,
                                          min_queue_examples, batch_size,
                                          shuffle=True)
+
+def resize(im):
+  IMAGE_ASPECT_RATIO = float(IMAGE_HEIGHT)/IMAGE_WIDTH
+  h, w, _ = im.shape
+  aspect_ratio = float(h) / w
+  t = 0
+  b = IMAGE_HEIGHT
+  l = 0
+  r = IMAGE_WIDTH
+  if aspect_ratio < IMAGE_ASPECT_RATIO:
+    h = IMAGE_HEIGHT
+    w = int(IMAGE_HEIGHT / aspect_ratio)
+    l = int((w - h / IMAGE_ASPECT_RATIO) / 2)
+    r = l + IMAGE_WIDTH
+  else:
+    h = int(IMAGE_WIDTH * aspect_ratio)
+    w = IMAGE_WIDTH
+    t = int((h - w * IMAGE_ASPECT_RATIO) / 2)
+    b = t + IMAGE_HEIGHT
+  im = transform.resize(im, (h, w))
+  return skimage.img_as_ubyte(im[t:b, l:r])
+
 def get_all_test_data(im_list, la_list):
   images = []
   labels = []
   index = 0
   for im_filename, la_filename in zip(im_list, la_list):
-    im = np.array(skimage.io.imread(im_filename), np.float32)
+    im = np.array(resize(skimage.io.imread(im_filename)), np.float32)
     im = im[np.newaxis]
     la = skimage.io.imread(la_filename)
     la = la[np.newaxis]

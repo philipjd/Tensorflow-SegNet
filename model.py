@@ -7,7 +7,6 @@ import numpy as np
 import math
 from datetime import datetime
 import time
-import Image
 from math import ceil
 from tensorflow.python.ops import gen_nn_ops
 import skimage
@@ -100,7 +99,7 @@ def weighted_loss(logits, labels, num_classes, head=None):
 
         softmax = tf.nn.softmax(logits)
 
-        cross_entropy = -tf.reduce_sum(tf.mul(labels * tf.log(softmax + epsilon), head), reduction_indices=[1])
+        cross_entropy = -tf.reduce_sum(tf.multiply(labels * tf.log(softmax + epsilon), head), reduction_indices=[1])
 
         cross_entropy_mean = tf.reduce_mean(cross_entropy, name='cross_entropy')
 
@@ -249,7 +248,10 @@ def inference(images, labels, batch_size, phase_train):
       conv_classifier = tf.nn.bias_add(conv, biases, name=scope.name)
 
     logit = conv_classifier
-    loss = cal_loss(conv_classifier, labels)
+    if labels is not None:
+      loss = cal_loss(conv_classifier, labels)
+    else:
+      loss = None
 
     return loss, logit
 
@@ -268,12 +270,12 @@ def train(total_loss, global_step):
 
     # Add histograms for trainable variables.
     for var in tf.trainable_variables():
-      tf.histogram_summary(var.op.name, var)
+      tf.summary.histogram(var.op.name, var)
 
     # Add histograms for gradients.
     for grad, var in grads:
       if grad is not None:
-        tf.histogram_summary(var.op.name + '/gradients', grad)
+        tf.summary.histogram(var.op.name + '/gradients', grad)
 
     # Track the moving averages of all trainable variables.
     variable_averages = tf.train.ExponentialMovingAverage(
@@ -289,6 +291,7 @@ def test(FLAGS):
   max_steps = FLAGS.max_steps
   batch_size = FLAGS.batch_size
   train_dir = FLAGS.log_dir # /tmp3/first350/TensorFlow/Logs
+  log_dir = FLAGS.log_dir # /tmp3/first350/TensorFlow/Logs
   test_dir = FLAGS.test_dir # /tmp3/first350/SegNet-Tutorial/CamVid/train.txt
   test_ckpt = FLAGS.testing
   image_w = FLAGS.image_w
@@ -325,7 +328,7 @@ def test(FLAGS):
 
     threads = tf.train.start_queue_runners(sess=sess)
     hist = np.zeros((NUM_CLASSES, NUM_CLASSES))
-    for image_batch, label_batch  in zip(images, labels):
+    for image_batch, label_batch, image_filename in zip(images, labels, image_filenames):
 
       feed_dict = {
         test_data_node: image_batch,
@@ -336,7 +339,8 @@ def test(FLAGS):
       dense_prediction, im = sess.run([logits, pred], feed_dict=feed_dict)
       # output_image to verify
       if (FLAGS.save_image):
-          writeImage(im[0], 'testing_image.png')
+#        writeImage(image_batch[0], log_dir + "/orig/" + os.path.basename(image_filename))
+        writeImage(im[0], log_dir + "/seg/" + os.path.basename(image_filename))
 
       hist += get_hist(dense_prediction, label_batch)
     acc_total = np.diag(hist).sum() / hist.sum()
@@ -383,7 +387,7 @@ def training(FLAGS, is_finetune=False):
 
     saver = tf.train.Saver(tf.all_variables())
 
-    summary_op = tf.merge_all_summaries()
+    summary_op = tf.summary.merge_all()
 
     with tf.Session() as sess:
       # Build an initialization operation to run below.
@@ -398,13 +402,13 @@ def training(FLAGS, is_finetune=False):
       threads = tf.train.start_queue_runners(sess=sess, coord=coord)
 
       # Summery placeholders
-      summary_writer = tf.train.SummaryWriter(train_dir, sess.graph)
+      summary_writer = tf.summary.FileWriter(train_dir, sess.graph)
       average_pl = tf.placeholder(tf.float32)
       acc_pl = tf.placeholder(tf.float32)
       iu_pl = tf.placeholder(tf.float32)
-      average_summary = tf.scalar_summary("test_average_loss", average_pl)
-      acc_summary = tf.scalar_summary("test_accuracy", acc_pl)
-      iu_summary = tf.scalar_summary("Mean_IU", iu_pl)
+      average_summary = tf.summary.scalar("test_average_loss", average_pl)
+      acc_summary = tf.summary.scalar("test_accuracy", acc_pl)
+      iu_summary = tf.summary.scalar("Mean_IU", iu_pl)
 
       for step in range(startstep, startstep + max_steps):
         image_batch ,label_batch = sess.run([images, labels])
@@ -470,3 +474,49 @@ def training(FLAGS, is_finetune=False):
 
       coord.request_stop()
       coord.join(threads)
+
+def infer(FLAGS):
+  batch_size = FLAGS.batch_size
+  test_dir = FLAGS.test_dir # /tmp3/first350/SegNet-Tutorial/CamVid/train.txt
+  log_dir = FLAGS.log_dir # /tmp3/first350/TensorFlow/Logs
+  test_ckpt = FLAGS.infer
+  image_w = FLAGS.image_w
+  image_h = FLAGS.image_h
+  image_c = FLAGS.image_c
+  batch_size = 1
+
+  image_filenames, _ = get_filename_list(test_dir)
+
+  test_data_node = tf.placeholder(tf.float32,
+                                  shape=[batch_size, image_h, image_w, image_c])
+  phase_train = tf.placeholder(tf.bool, name='phase_train')
+  _, logits = inference(test_data_node, None, batch_size, phase_train)
+
+  pred = tf.argmax(logits, dimension=3)
+  # get moving avg
+  variable_averages = tf.train.ExponentialMovingAverage(
+                      MOVING_AVERAGE_DECAY)
+  variables_to_restore = variable_averages.variables_to_restore()
+
+  saver = tf.train.Saver(variables_to_restore)
+
+  with tf.Session() as sess:
+    # Load checkpoint
+    saver.restore(sess, test_ckpt )
+
+    images, _ = get_all_test_data(image_filenames, image_filenames)
+
+    threads = tf.train.start_queue_runners(sess=sess)
+    for image_batch, image_filename in zip(images, image_filenames):
+      print image_filename
+      feed_dict = {
+        test_data_node: image_batch,
+        phase_train: False
+      }
+
+      dense_prediction, im = sess.run([logits, pred], feed_dict=feed_dict)
+      # output_image to verify
+      if FLAGS.save_image:
+#        skimage.io.imsave(log_dir + "/orig/" + os.path.basename(image_filename), image_batch[0])
+        writeImage(im[0], log_dir + "/seg/" + os.path.basename(image_filename))
+
