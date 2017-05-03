@@ -12,7 +12,7 @@ from tensorflow.python.ops import gen_nn_ops
 import skimage
 import skimage.io
 # modules
-from Utils import _variable_with_weight_decay, _variable_on_cpu, _add_loss_summaries, _activation_summary, print_hist_summery, get_hist, per_class_acc, writeImage
+from Utils import _variable_with_weight_decay, _variable_on_cpu, _variable_on_gpu, _add_loss_summaries, _activation_summary, print_hist_summery, get_hist, per_class_acc, writeImage
 from Inputs import *
 
 
@@ -36,12 +36,12 @@ INITIAL_LEARNING_RATE = 0.001      # Initial learning rate.
 EVAL_BATCH_SIZE = 5
 BATCH_SIZE = 5
 # for CamVid
-IMAGE_HEIGHT = 360
-IMAGE_WIDTH = 480
+IMAGE_HEIGHT = 375
+IMAGE_WIDTH = 1242
 IMAGE_DEPTH = 3
 
-NUM_CLASSES = 11
-NUM_EXAMPLES_PER_EPOCH_FOR_TRAIN = 367
+NUM_CLASSES = 2
+NUM_EXAMPLES_PER_EPOCH_FOR_TRAIN = 226
 NUM_EXAMPLES_PER_EPOCH_FOR_TEST = 101
 NUM_EXAMPLES_PER_EPOCH_FOR_EVAL = 1
 TEST_ITER = NUM_EXAMPLES_PER_EPOCH_FOR_TEST / BATCH_SIZE
@@ -111,31 +111,25 @@ def weighted_loss(logits, labels, num_classes, head=None):
 
 def cal_loss(logits, labels):
     loss_weight = np.array([
-      0.2595,
-      0.1826,
-      4.5640,
-      0.1417,
-      0.9051,
-      0.3826,
-      9.6446,
-      1.8418,
-      0.6823,
-      6.2478,
-      7.3614,
+      1.0,
+      4.6,
     ]) # class 0~10
 
     labels = tf.cast(labels, tf.int32)
     # return loss(logits, labels)
     return weighted_loss(logits, labels, num_classes=NUM_CLASSES, head=loss_weight)
 
-def conv_layer_with_bn(inputT, shape, train_phase, activation=True, name=None):
+def conv_layer_with_bn(inputT, shape, train_phase, activation=True, use_gpu=False, name=None):
     in_channel = shape[2]
     out_channel = shape[3]
     k_size = shape[0]
     with tf.variable_scope(name) as scope:
-      kernel = _variable_with_weight_decay('ort_weights', shape=shape, initializer=orthogonal_initializer(), wd=None)
+      kernel = _variable_with_weight_decay('ort_weights', use_gpu, shape=shape, initializer=orthogonal_initializer(), wd=None)
       conv = tf.nn.conv2d(inputT, kernel, [1, 1, 1, 1], padding='SAME')
-      biases = _variable_on_cpu('biases', [out_channel], tf.constant_initializer(0.0))
+      if use_gpu:
+          biases = _variable_on_gpu('biases', [out_channel], tf.constant_initializer(0.0))
+      else:
+          biases = _variable_on_cpu('biases', [out_channel], tf.constant_initializer(0.0))
       bias = tf.nn.bias_add(conv, biases)
       if activation is True:
         conv_out = tf.nn.relu(batch_norm_layer(bias, train_phase, scope.name))
@@ -182,29 +176,29 @@ def batch_norm_layer(inputT, is_training, scope):
                            updates_collections=None, center=False, scope=scope+"_bn", reuse = True))
 
 
-def inference(images, labels, batch_size, phase_train):
+def inference(images, labels, batch_size, phase_train, use_gpu=False):
     # norm1
     norm1 = tf.nn.lrn(images, depth_radius=5, bias=1.0, alpha=0.0001, beta=0.75,
                 name='norm1')
     # conv1
-    conv1 = conv_layer_with_bn(norm1, [7, 7, images.get_shape().as_list()[3], 64], phase_train, name="conv1")
+    conv1 = conv_layer_with_bn(norm1, [7, 7, images.get_shape().as_list()[3], 64], phase_train, use_gpu=use_gpu, name="conv1")
     # pool1
     pool1, pool1_indices = tf.nn.max_pool_with_argmax(conv1, ksize=[1, 2, 2, 1], strides=[1, 2, 2, 1],
                            padding='SAME', name='pool1')
     # conv2
-    conv2 = conv_layer_with_bn(pool1, [7, 7, 64, 64], phase_train, name="conv2")
+    conv2 = conv_layer_with_bn(pool1, [7, 7, 64, 64], phase_train, use_gpu=use_gpu, name="conv2")
 
     # pool2
     pool2, pool2_indices = tf.nn.max_pool_with_argmax(conv2, ksize=[1, 2, 2, 1],
                            strides=[1, 2, 2, 1], padding='SAME', name='pool2')
     # conv3
-    conv3 = conv_layer_with_bn(pool2, [7, 7, 64, 64], phase_train, name="conv3")
+    conv3 = conv_layer_with_bn(pool2, [7, 7, 64, 64], phase_train, use_gpu=use_gpu, name="conv3")
 
     # pool3
     pool3, pool3_indices = tf.nn.max_pool_with_argmax(conv3, ksize=[1, 2, 2, 1],
                            strides=[1, 2, 2, 1], padding='SAME', name='pool3')
     # conv4
-    conv4 = conv_layer_with_bn(pool3, [7, 7, 64, 64], phase_train, name="conv4")
+    conv4 = conv_layer_with_bn(pool3, [7, 7, 64, 64], phase_train, use_gpu=use_gpu, name="conv4")
 
     # pool4
     pool4, pool4_indices = tf.nn.max_pool_with_argmax(conv4, ksize=[1, 2, 2, 1],
@@ -214,37 +208,40 @@ def inference(images, labels, batch_size, phase_train):
     # upsample4
     # Need to change when using different dataset out_w, out_h
     # upsample4 = upsample_with_pool_indices(pool4, pool4_indices, pool4.get_shape(), out_w=45, out_h=60, scale=2, name='upsample4')
-    upsample4 = deconv_layer(pool4, [2, 2, 64, 64], [batch_size, 45, 60, 64], 2, "up4")
+    upsample4 = deconv_layer(pool4, [2, 2, 64, 64], [batch_size, 47, 156, 64], 2, "up4")
     # decode 4
-    conv_decode4 = conv_layer_with_bn(upsample4, [7, 7, 64, 64], phase_train, False, name="conv_decode4")
+    conv_decode4 = conv_layer_with_bn(upsample4, [7, 7, 64, 64], phase_train, False, use_gpu=use_gpu, name="conv_decode4")
 
     # upsample 3
     # upsample3 = upsample_with_pool_indices(conv_decode4, pool3_indices, conv_decode4.get_shape(), scale=2, name='upsample3')
-    upsample3= deconv_layer(conv_decode4, [2, 2, 64, 64], [batch_size, 90, 120, 64], 2, "up3")
+    upsample3= deconv_layer(conv_decode4, [2, 2, 64, 64], [batch_size, 94, 311, 64], 2, "up3")
     # decode 3
-    conv_decode3 = conv_layer_with_bn(upsample3, [7, 7, 64, 64], phase_train, False, name="conv_decode3")
+    conv_decode3 = conv_layer_with_bn(upsample3, [7, 7, 64, 64], phase_train, False, use_gpu=use_gpu, name="conv_decode3")
 
     # upsample2
     # upsample2 = upsample_with_pool_indices(conv_decode3, pool2_indices, conv_decode3.get_shape(), scale=2, name='upsample2')
-    upsample2= deconv_layer(conv_decode3, [2, 2, 64, 64], [batch_size, 180, 240, 64], 2, "up2")
+    upsample2= deconv_layer(conv_decode3, [2, 2, 64, 64], [batch_size, 188, 621, 64], 2, "up2")
     # decode 2
-    conv_decode2 = conv_layer_with_bn(upsample2, [7, 7, 64, 64], phase_train, False, name="conv_decode2")
+    conv_decode2 = conv_layer_with_bn(upsample2, [7, 7, 64, 64], phase_train, False, use_gpu=use_gpu, name="conv_decode2")
 
     # upsample1
     # upsample1 = upsample_with_pool_indices(conv_decode2, pool1_indices, conv_decode2.get_shape(), scale=2, name='upsample1')
-    upsample1= deconv_layer(conv_decode2, [2, 2, 64, 64], [batch_size, 360, 480, 64], 2, "up1")
+    upsample1= deconv_layer(conv_decode2, [2, 2, 64, 64], [batch_size, 375, 1242, 64], 2, "up1")
     # decode4
-    conv_decode1 = conv_layer_with_bn(upsample1, [7, 7, 64, 64], phase_train, False, name="conv_decode1")
+    conv_decode1 = conv_layer_with_bn(upsample1, [7, 7, 64, 64], phase_train, False, use_gpu=use_gpu, name="conv_decode1")
     """ end of Decode """
     """ Start Classify """
     # output predicted class number (6)
     with tf.variable_scope('conv_classifier') as scope:
-      kernel = _variable_with_weight_decay('weights',
+      kernel = _variable_with_weight_decay('weights', use_gpu,
                                            shape=[1, 1, 64, NUM_CLASSES],
                                            initializer=msra_initializer(1, 64),
                                            wd=0.0005)
       conv = tf.nn.conv2d(conv_decode1, kernel, [1, 1, 1, 1], padding='SAME')
-      biases = _variable_on_cpu('biases', [NUM_CLASSES], tf.constant_initializer(0.0))
+      if use_gpu:
+          biases = _variable_on_gpu('biases', [NUM_CLASSES], tf.constant_initializer(0.0))
+      else:
+          biases = _variable_on_gpu('biases', [NUM_CLASSES], tf.constant_initializer(0.0))
       conv_classifier = tf.nn.bias_add(conv, biases, name=scope.name)
 
     logit = conv_classifier
@@ -358,6 +355,7 @@ def training(FLAGS, is_finetune=False):
   image_w = FLAGS.image_w
   image_h = FLAGS.image_h
   image_c = FLAGS.image_c
+  use_gpu = FLAGS.use_gpu
   # should be changed if your model stored by different convention
   startstep = 0 if not is_finetune else int(FLAGS.finetune.split('-')[-1])
 
@@ -380,7 +378,7 @@ def training(FLAGS, is_finetune=False):
     val_images, val_labels = CamVidInputs(val_image_filenames, val_label_filenames, batch_size)
 
     # Build a Graph that computes the logits predictions from the inference model.
-    loss, eval_prediction = inference(train_data_node, train_labels_node, batch_size, phase_train)
+    loss, eval_prediction = inference(train_data_node, train_labels_node, batch_size, phase_train, use_gpu)
 
     # Build a Graph that trains the model with one batch of examples and updates the model parameters.
     train_op = train(loss, global_step)

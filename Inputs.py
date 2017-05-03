@@ -9,12 +9,12 @@ import skimage.io
 from skimage import transform
 from skimage.viewer import ImageViewer
 
-IMAGE_HEIGHT = 360
-IMAGE_WIDTH = 480
+IMAGE_HEIGHT = 375
+IMAGE_WIDTH = 1242
 IMAGE_DEPTH = 3
 
-NUM_CLASSES = 11
-NUM_EXAMPLES_PER_EPOCH_FOR_TRAIN = 367
+NUM_CLASSES = 2
+NUM_EXAMPLES_PER_EPOCH_FOR_TRAIN = 226
 NUM_EXAMPLES_PER_EPOCH_FOR_TEST = 101
 NUM_EXAMPLES_PER_EPOCH_FOR_EVAL = 1
 
@@ -84,8 +84,11 @@ def CamVid_reader(filename_queue):
   image_bytes = tf.image.decode_png(imageValue)
   label_bytes = tf.image.decode_png(labelValue)
 
-  image = tf.reshape(image_bytes, (IMAGE_HEIGHT, IMAGE_WIDTH, IMAGE_DEPTH))
-  label = tf.reshape(label_bytes, (IMAGE_HEIGHT, IMAGE_WIDTH, 1))
+  image_bytes_resize = tf.image.resize_images(image_bytes, [IMAGE_HEIGHT, IMAGE_WIDTH])
+  label_bytes_resize = tf.image.resize_images(label_bytes, [IMAGE_HEIGHT, IMAGE_WIDTH])
+
+  image = tf.reshape(image_bytes_resize, (IMAGE_HEIGHT, IMAGE_WIDTH, IMAGE_DEPTH))
+  label = tf.reshape(label_bytes_resize, (IMAGE_HEIGHT, IMAGE_WIDTH, 1))
 
   return image, label
 

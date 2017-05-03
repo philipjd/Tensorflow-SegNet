@@ -13,11 +13,12 @@ tf.app.flags.DEFINE_string('image_dir', "/tmp3/first350/SegNet-Tutorial/CamVid/t
 tf.app.flags.DEFINE_string('test_dir', "/tmp3/first350/SegNet-Tutorial/CamVid/test.txt", """ path to CamVid test image """)
 tf.app.flags.DEFINE_string('val_dir', "/tmp3/first350/SegNet-Tutorial/CamVid/val.txt", """ path to CamVid val image """)
 tf.app.flags.DEFINE_integer('max_steps', "20000", """ max_steps """)
-tf.app.flags.DEFINE_integer('image_h', "360", """ image height """)
-tf.app.flags.DEFINE_integer('image_w', "480", """ image width """)
+tf.app.flags.DEFINE_integer('image_h', "375", """ image height """)
+tf.app.flags.DEFINE_integer('image_w', "1242", """ image width """)
 tf.app.flags.DEFINE_integer('image_c', "3", """ image channel (RGB) """)
 tf.app.flags.DEFINE_integer('num_class', "11", """ total class number """)
 tf.app.flags.DEFINE_boolean('save_image', True, """ whether to save predicted image """)
+tf.app.flags.DEFINE_boolean('use_gpu', False, """ whether to use gpu """)
 
 def checkArgs():
     if FLAGS.infer != '':

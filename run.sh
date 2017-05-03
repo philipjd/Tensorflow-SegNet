@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # for training
-python main.py --log_dir=log --image_dir=../SegNet-Tutorial/CamVid/train.txt --val_dir=../SegNet-Tutorial/CamVid/val.txt --batch_size=5
+python main.py --log_dir=log --image_dir=/home/dijiang/Work/data/public/kitti_road/data_road/training/train.txt --val_dir=/home/dijiang/Work/data/public/kitti_road/data_road/training/val.txt --batch_size=5
 
 # for finetune from saved ckpt
 # python main.py --finetune=log/model.ckpt-19999  --log_dir=log --image_dir=../SegNet-Tutorial/CamVid/train.txt --val_dir=../SegNet-Tutorial/CamVid/val.txt --batch_size=5

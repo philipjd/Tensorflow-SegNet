@@ -59,7 +59,22 @@ def _variable_on_cpu(name, shape, initializer):
     var = tf.get_variable(name, shape, initializer=initializer)
   return var
 
-def _variable_with_weight_decay(name, shape, initializer, wd):
+def _variable_on_gpu(name, shape, initializer):
+  """Helper to create a Variable stored on CPU memory.
+
+  Args:
+    name: name of the variable
+    shape: list of ints
+    initializer: initializer for Variable
+
+  Returns:
+    Variable Tensor
+  """
+  with tf.device('/gpu:0'):
+    var = tf.get_variable(name, shape, initializer=initializer)
+  return var
+
+def _variable_with_weight_decay(name, use_gpu, shape, initializer, wd):
   """Helper to create an initialized Variable with weight decay.
 
   Note that the Variable is initialized with a truncated normal distribution.
@@ -75,10 +90,16 @@ def _variable_with_weight_decay(name, shape, initializer, wd):
   Returns:
     Variable Tensor
   """
-  var = _variable_on_cpu(
-      name,
-      shape,
-      initializer)
+  if use_gpu:
+      var = _variable_on_gpu(
+          name,
+          shape,
+          initializer)
+  else:
+      var = _variable_on_cpu(
+          name,
+          shape,
+          initializer)
   if wd is not None:
     weight_decay = tf.multiply(tf.nn.l2_loss(var), wd, name='weight_loss')
     tf.add_to_collection('losses', weight_decay)
