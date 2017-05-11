@@ -12,8 +12,9 @@ from tensorflow.python.ops import gen_nn_ops
 import skimage
 import skimage.io
 # modules
-from Utils import _variable_with_weight_decay, _variable_on_cpu, _variable_on_gpu, _add_loss_summaries, _activation_summary, print_hist_summery, get_hist, per_class_acc, writeImage
+from Utils import _variable_with_weight_decay, _variable_on_cpu, _variable_on_gpu, _add_loss_summaries, _activation_summary, print_hist_summery, get_hist, per_class_acc, writeImage, get_deconv_fmap_size
 from Inputs import *
+import config
 
 
 """ legacy code for tf bug in missing gradient with max_pool_argmax """
@@ -28,22 +29,22 @@ def _MaxPoolWithArgmaxGrad(op, grad, unused_argmax_grad):
                                    data_format='NHWC')
 
 # Constants describing the training process.
-MOVING_AVERAGE_DECAY = 0.9999     # The decay to use for the moving average.
-NUM_EPOCHS_PER_DECAY = 350.0      # Epochs after which learning rate decays.
-LEARNING_RATE_DECAY_FACTOR = 0.1  # Learning rate decay factor.
+MOVING_AVERAGE_DECAY = config.MOVING_AVERAGE_DECAY     # The decay to use for the moving average.
+NUM_EPOCHS_PER_DECAY = config.NUM_EPOCHS_PER_DECAY      # Epochs after which learning rate decays.
+LEARNING_RATE_DECAY_FACTOR = config.LEARNING_RATE_DECAY_FACTOR  # Learning rate decay factor.
 
-INITIAL_LEARNING_RATE = 0.001      # Initial learning rate.
-EVAL_BATCH_SIZE = 5
-BATCH_SIZE = 5
+INITIAL_LEARNING_RATE = config.INITIAL_LEARNING_RATE      # Initial learning rate.
+EVAL_BATCH_SIZE = config.EVAL_BATCH_SIZE
+BATCH_SIZE = config.BATCH_SIZE
 # for CamVid
-IMAGE_HEIGHT = 375
-IMAGE_WIDTH = 1242
-IMAGE_DEPTH = 3
+IMAGE_HEIGHT = config.IMAGE_HEIGHT
+IMAGE_WIDTH = config.IMAGE_WIDTH
+IMAGE_DEPTH = config.IMAGE_DEPTH
 
-NUM_CLASSES = 2
-NUM_EXAMPLES_PER_EPOCH_FOR_TRAIN = 226
-NUM_EXAMPLES_PER_EPOCH_FOR_TEST = 101
-NUM_EXAMPLES_PER_EPOCH_FOR_EVAL = 1
+NUM_CLASSES = config.label['num_classes']
+NUM_EXAMPLES_PER_EPOCH_FOR_TRAIN = config.NUM_EXAMPLES_PER_EPOCH_FOR_TRAIN
+NUM_EXAMPLES_PER_EPOCH_FOR_TEST = config.NUM_EXAMPLES_PER_EPOCH_FOR_TEST
+NUM_EXAMPLES_PER_EPOCH_FOR_EVAL = config.NUM_EXAMPLES_PER_EPOCH_FOR_EVAL
 TEST_ITER = NUM_EXAMPLES_PER_EPOCH_FOR_TEST / BATCH_SIZE
 
 def msra_initializer(kl, dl):
@@ -110,10 +111,11 @@ def weighted_loss(logits, labels, num_classes, head=None):
     return loss
 
 def cal_loss(logits, labels):
-    loss_weight = np.array([
-      1.0,
-      4.6,
-    ]) # class 0~10
+    #loss_weight = np.array([
+      #1.0,
+      #4.6,
+    #]) # class 0~10
+    loss_weight = config.label['loss_weight']
 
     labels = tf.cast(labels, tf.int32)
     # return loss(logits, labels)
@@ -208,25 +210,29 @@ def inference(images, labels, batch_size, phase_train, use_gpu=False):
     # upsample4
     # Need to change when using different dataset out_w, out_h
     # upsample4 = upsample_with_pool_indices(pool4, pool4_indices, pool4.get_shape(), out_w=45, out_h=60, scale=2, name='upsample4')
-    upsample4 = deconv_layer(pool4, [2, 2, 64, 64], [batch_size, 47, 156, 64], 2, "up4")
+    fmap_h, fmap_w = get_deconv_fmap_size(IMAGE_HEIGHT, IMAGE_WIDTH, 4)
+    upsample4 = deconv_layer(pool4, [2, 2, 64, 64], [batch_size, fmap_h, fmap_w, 64], 2, "up4")
     # decode 4
     conv_decode4 = conv_layer_with_bn(upsample4, [7, 7, 64, 64], phase_train, False, use_gpu=use_gpu, name="conv_decode4")
 
     # upsample 3
     # upsample3 = upsample_with_pool_indices(conv_decode4, pool3_indices, conv_decode4.get_shape(), scale=2, name='upsample3')
-    upsample3= deconv_layer(conv_decode4, [2, 2, 64, 64], [batch_size, 94, 311, 64], 2, "up3")
+    fmap_h, fmap_w = get_deconv_fmap_size(IMAGE_HEIGHT, IMAGE_WIDTH, 3)
+    upsample3= deconv_layer(conv_decode4, [2, 2, 64, 64], [batch_size, fmap_h, fmap_w, 64], 2, "up3")
     # decode 3
     conv_decode3 = conv_layer_with_bn(upsample3, [7, 7, 64, 64], phase_train, False, use_gpu=use_gpu, name="conv_decode3")
 
     # upsample2
     # upsample2 = upsample_with_pool_indices(conv_decode3, pool2_indices, conv_decode3.get_shape(), scale=2, name='upsample2')
-    upsample2= deconv_layer(conv_decode3, [2, 2, 64, 64], [batch_size, 188, 621, 64], 2, "up2")
+    fmap_h, fmap_w = get_deconv_fmap_size(IMAGE_HEIGHT, IMAGE_WIDTH, 2)
+    upsample2= deconv_layer(conv_decode3, [2, 2, 64, 64], [batch_size, fmap_h, fmap_w, 64], 2, "up2")
     # decode 2
     conv_decode2 = conv_layer_with_bn(upsample2, [7, 7, 64, 64], phase_train, False, use_gpu=use_gpu, name="conv_decode2")
 
     # upsample1
     # upsample1 = upsample_with_pool_indices(conv_decode2, pool1_indices, conv_decode2.get_shape(), scale=2, name='upsample1')
-    upsample1= deconv_layer(conv_decode2, [2, 2, 64, 64], [batch_size, 375, 1242, 64], 2, "up1")
+    fmap_h, fmap_w = get_deconv_fmap_size(IMAGE_HEIGHT, IMAGE_WIDTH, 1)
+    upsample1= deconv_layer(conv_decode2, [2, 2, 64, 64], [batch_size, fmap_h, fmap_w, 64], 2, "up1")
     # decode4
     conv_decode1 = conv_layer_with_bn(upsample1, [7, 7, 64, 64], phase_train, False, use_gpu=use_gpu, name="conv_decode1")
     """ end of Decode """
@@ -291,9 +297,9 @@ def test(FLAGS):
   log_dir = FLAGS.log_dir # /tmp3/first350/TensorFlow/Logs
   test_dir = FLAGS.test_dir # /tmp3/first350/SegNet-Tutorial/CamVid/train.txt
   test_ckpt = FLAGS.testing
-  image_w = FLAGS.image_w
-  image_h = FLAGS.image_h
-  image_c = FLAGS.image_c
+  image_w = IMAGE_WIDTH
+  image_h = IMAGE_HEIGHT
+  image_c = IMAGE_DEPTH
   # testing should set BATCH_SIZE = 1
   batch_size = 1
 
@@ -352,9 +358,10 @@ def training(FLAGS, is_finetune=False):
   image_dir = FLAGS.image_dir # /tmp3/first350/SegNet-Tutorial/CamVid/train.txt
   val_dir = FLAGS.val_dir # /tmp3/first350/SegNet-Tutorial/CamVid/val.txt
   finetune_ckpt = FLAGS.finetune
-  image_w = FLAGS.image_w
-  image_h = FLAGS.image_h
-  image_c = FLAGS.image_c
+  image_w = IMAGE_WIDTH
+  image_h = IMAGE_HEIGHT
+  image_c = IMAGE_DEPTH
+
   use_gpu = FLAGS.use_gpu
   # should be changed if your model stored by different convention
   startstep = 0 if not is_finetune else int(FLAGS.finetune.split('-')[-1])
@@ -478,9 +485,13 @@ def infer(FLAGS):
   test_dir = FLAGS.test_dir # /tmp3/first350/SegNet-Tutorial/CamVid/train.txt
   log_dir = FLAGS.log_dir # /tmp3/first350/TensorFlow/Logs
   test_ckpt = FLAGS.infer
-  image_w = FLAGS.image_w
-  image_h = FLAGS.image_h
-  image_c = FLAGS.image_c
+  image_w = IMAGE_WIDTH
+  image_h = IMAGE_HEIGHT
+  image_c = IMAGE_DEPTH
+  output_dir = FLAGS.outpath
+  if not os.path.isdir(output_dir):
+      os.mkdir(output_dir)
+
   batch_size = 1
 
   image_filenames, _ = get_filename_list(test_dir)
@@ -505,16 +516,27 @@ def infer(FLAGS):
     images, _ = get_all_test_data(image_filenames, image_filenames)
 
     threads = tf.train.start_queue_runners(sess=sess)
+
+    total_time_elapsed = 0.0
+    img_count = 0
     for image_batch, image_filename in zip(images, image_filenames):
       print image_filename
+      img_count += 1
+      begin_ts = time.time()
       feed_dict = {
         test_data_node: image_batch,
         phase_train: False
       }
 
       dense_prediction, im = sess.run([logits, pred], feed_dict=feed_dict)
+      end_ts = time.time()
+      print("cost time: {} s".format(end_ts - begin_ts))
+      total_time_elapsed += end_ts - begin_ts
       # output_image to verify
       if FLAGS.save_image:
 #        skimage.io.imsave(log_dir + "/orig/" + os.path.basename(image_filename), image_batch[0])
-        writeImage(im[0], log_dir + "/seg/" + os.path.basename(image_filename))
+        writeImage(im[0], output_dir + "/" + os.path.basename(image_filename))
+
+    print("total time elapsed: {} s".format(total_time_elapsed))
+    print("evarage time elapsed: {} s".format(total_time_elapsed/img_count))
 

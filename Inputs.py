@@ -8,15 +8,16 @@ import skimage
 import skimage.io
 from skimage import transform
 from skimage.viewer import ImageViewer
+import config
 
-IMAGE_HEIGHT = 375
-IMAGE_WIDTH = 1242
-IMAGE_DEPTH = 3
+IMAGE_HEIGHT = config.IMAGE_HEIGHT
+IMAGE_WIDTH = config.IMAGE_WIDTH
+IMAGE_DEPTH = config.IMAGE_DEPTH
 
-NUM_CLASSES = 2
-NUM_EXAMPLES_PER_EPOCH_FOR_TRAIN = 226
-NUM_EXAMPLES_PER_EPOCH_FOR_TEST = 101
-NUM_EXAMPLES_PER_EPOCH_FOR_EVAL = 1
+NUM_CLASSES = config.label['num_classes']
+NUM_EXAMPLES_PER_EPOCH_FOR_TRAIN = config.NUM_EXAMPLES_PER_EPOCH_FOR_TRAIN
+NUM_EXAMPLES_PER_EPOCH_FOR_TEST = config.NUM_EXAMPLES_PER_EPOCH_FOR_TEST
+NUM_EXAMPLES_PER_EPOCH_FOR_EVAL = config.NUM_EXAMPLES_PER_EPOCH_FOR_EVAL
 
 def _generate_image_and_label_batch(image, label, min_queue_examples,
                                     batch_size, shuffle):
@@ -84,11 +85,11 @@ def CamVid_reader(filename_queue):
   image_bytes = tf.image.decode_png(imageValue)
   label_bytes = tf.image.decode_png(labelValue)
 
-  image_bytes_resize = tf.image.resize_images(image_bytes, [IMAGE_HEIGHT, IMAGE_WIDTH])
-  label_bytes_resize = tf.image.resize_images(label_bytes, [IMAGE_HEIGHT, IMAGE_WIDTH])
+  #image_bytes_resize = tf.image.resize_images(image_bytes, [IMAGE_HEIGHT, IMAGE_WIDTH])
+  #label_bytes_resize = tf.image.resize_images(label_bytes, [IMAGE_HEIGHT, IMAGE_WIDTH])
 
-  image = tf.reshape(image_bytes_resize, (IMAGE_HEIGHT, IMAGE_WIDTH, IMAGE_DEPTH))
-  label = tf.reshape(label_bytes_resize, (IMAGE_HEIGHT, IMAGE_WIDTH, 1))
+  image = tf.reshape(image_bytes, (IMAGE_HEIGHT, IMAGE_WIDTH, IMAGE_DEPTH))
+  label = tf.reshape(label_bytes, (IMAGE_HEIGHT, IMAGE_WIDTH, 1))
 
   return image, label
 
@@ -116,7 +117,7 @@ def CamVidInputs(image_filenames, label_filenames, batch_size):
   image, label = CamVid_reader(filename_queue)
   reshaped_image = tf.cast(image, tf.float32)
 
-  min_fraction_of_examples_in_queue = 0.4
+  min_fraction_of_examples_in_queue = 0.1
   min_queue_examples = int(NUM_EXAMPLES_PER_EPOCH_FOR_TRAIN *
                            min_fraction_of_examples_in_queue)
   print ('Filling queue with %d CamVid images before starting to train. '
@@ -149,6 +150,20 @@ def resize(im):
   return skimage.img_as_ubyte(im[t:b, l:r])
 
 def get_all_test_data(im_list, la_list):
+  images = []
+  labels = []
+  index = 0
+  for im_filename, la_filename in zip(im_list, la_list):
+    im = np.array(skimage.io.imread(im_filename), np.float32)
+    im = im[np.newaxis]
+    la = skimage.io.imread(la_filename)
+    la = la[np.newaxis]
+    la = la[...,np.newaxis]
+    images.append(im)
+    labels.append(la)
+  return images, labels
+
+def get_all_test_data_with_resize(im_list, la_list):
   images = []
   labels = []
   index = 0

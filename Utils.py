@@ -1,6 +1,8 @@
 import tensorflow as tf
 import numpy as np
 from PIL import Image
+from math import ceil
+import config
 
 def _activation_summary(x):
   """Helper to create summaries for activations.
@@ -107,17 +109,18 @@ def _variable_with_weight_decay(name, use_gpu, shape, initializer, wd):
 
 def writeImage(image, filename):
     """ store label data to colored image """
-    Sky = [128,128,128]
-    Building = [128,0,0]
-    Pole = [192,192,128]
-    Road_marking = [255,69,0]
-    Road = [128,64,128]
-    Pavement = [60,40,222]
+    #Sky = [128,128,128]
+    #Building = [128,0,0]
+    #Pole = [192,192,128]
+    #Road_marking = [255,69,0]
+    #Road = [128,64,128]
+    #Pavement = [60,40,222]
     r = image.copy()
     g = image.copy()
     b = image.copy()
-    label_colours = np.array([Sky, Building, Pole, Road, Road_marking, Pavement])
-    for l in range(0,6):
+    #label_colours = np.array([Sky, Building, Pole, Road, Road_marking, Pavement])
+    label_colours = config.label['label_colours']
+    for l in range(0,config.label['num_classes']):
         r[image==l] = label_colours[l,0]
         g[image==l] = label_colours[l,1]
         b[image==l] = label_colours[l,2]
@@ -179,3 +182,11 @@ def per_class_acc(predictions, label_tensor):
         else:
           acc = np.diag(hist)[ii] / float(hist.sum(1)[ii])
         print("    class # %d accuracy = %f "%(ii,acc))
+
+def get_deconv_fmap_size(img_h, img_w, corr_conv_layer, stride=2):
+    fmap_h = img_h
+    fmap_w = img_w
+    for i in range(corr_conv_layer-1):
+        fmap_h = ceil(fmap_h / 2.0)
+        fmap_w = ceil(fmap_w / 2.0)
+    return (int(fmap_h), int(fmap_w))
