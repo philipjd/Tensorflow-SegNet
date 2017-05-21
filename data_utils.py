@@ -301,7 +301,7 @@ def augment_image(inpath, maskpath):
         #os.system('cp {} {}'.format(maskname, outmaskname))
 
         print("augmenting Hue/Lightness/Saturation/Contrast")
-        shadow_rate_list = [0.1, 0.3, 0.5]
+        shadow_rate_list = [0.3, 0.5]
         light_rate_list = [0.3, 0.5, 0.7, 0.9, 1.1, 1.3, 1.5, 1.7]
         hls = cv2.cvtColor(img, cv2.COLOR_RGB2HLS)
         for rate in light_rate_list:

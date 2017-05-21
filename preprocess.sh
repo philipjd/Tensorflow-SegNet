@@ -4,36 +4,36 @@ src=$1
 des=$2
 
 # Step 1. Generate mask label & copy data
-echo "Generating mask and copy data"
-if [ ! -d $des/sample ]
-then
-    mkdir -p $des/sample
-fi
+#echo "Generating mask and copy data"
+#if [ ! -d $des/sample ]
+#then
+    #mkdir -p $des/sample
+#fi
 
-if [ ! -d $des/label ]
-then
-    mkdir -p $des/label
-fi
+#if [ ! -d $des/label ]
+#then
+    #mkdir -p $des/label
+#fi
 
-ls $src/*.json | xargs -n1 basename > $src/tmp
-for f in `cat $src/tmp`
-do
-    echo $f
-    fname=${f%.*}
-    if [ ! -d $src/${fname}_json ]; then
-        labelme_json_to_dataset $src/$f
-        if [ $? != 0 ];then echo "Failed!"; exit -1; fi
-    fi
+#ls $src/*.json | xargs -n1 basename > $src/tmp
+#for f in `cat $src/tmp`
+#do
+    #echo $f
+    #fname=${f%.*}
+    #if [ ! -d $src/${fname}_json ]; then
+        #labelme_json_to_dataset $src/$f
+        #if [ $? != 0 ];then echo "Failed!"; exit -1; fi
+    #fi
 
-    cp $src/$fname.png $des/sample/
-    if [ $? != 0 ];then echo "Failed!"; exit -1; fi
+    #cp $src/$fname.png $des/sample/
+    #if [ $? != 0 ];then echo "Failed!"; exit -1; fi
 
-    cp $src/${fname}_json/label.png $des/label/${fname}.png
-    if [ $? != 0 ];then echo "Failed!"; exit -1; fi
+    #cp $src/${fname}_json/label.png $des/label/${fname}.png
+    #if [ $? != 0 ];then echo "Failed!"; exit -1; fi
 
-done
+#done
 
-rm $src/tmp
+#rm $src/tmp
 
 
 # Step 2. Resize
@@ -66,9 +66,9 @@ if [ $? != 0 ];then echo "Failed!"; exit -1; fi
 
 
 # Step 5. Pack
-echo "Packing"
-cd $des/../
-dir=`basename $des`
-if [ $? != 0 ];then echo "Failed!"; exit -1; fi
+#echo "Packing"
+#cd $des/../
+#dir=`basename $des`
+#if [ $? != 0 ];then echo "Failed!"; exit -1; fi
 
-tar cjf - $dir | split -b 100m - $dir.tar.bz2
+#tar cjf - $dir | split -b 100m - $dir.tar.bz2
