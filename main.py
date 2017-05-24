@@ -20,6 +20,8 @@ tf.app.flags.DEFINE_integer('max_steps', config.MAX_STEPS, """ max_steps """)
 #tf.app.flags.DEFINE_integer('image_c', "3", """ image channel (RGB) """)
 tf.app.flags.DEFINE_integer('num_class', config.label['num_classes'], """ total class number """)
 tf.app.flags.DEFINE_boolean('save_image', True, """ whether to save predicted image """)
+tf.app.flags.DEFINE_string('save_type', 'mask', """ whether to save mask or probability image """)
+tf.app.flags.DEFINE_integer('save_dim', 1, """ which class' probabilty to save """)
 tf.app.flags.DEFINE_boolean('use_gpu', False, """ whether to use gpu """)
 
 def checkArgs():

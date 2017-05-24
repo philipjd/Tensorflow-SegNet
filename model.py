@@ -489,6 +489,8 @@ def infer(FLAGS):
   image_h = IMAGE_HEIGHT
   image_c = IMAGE_DEPTH
   output_dir = FLAGS.outpath
+  save_type = FLAGS.save_type
+
   if not os.path.isdir(output_dir):
       os.mkdir(output_dir)
 
@@ -501,7 +503,10 @@ def infer(FLAGS):
   phase_train = tf.placeholder(tf.bool, name='phase_train')
   _, logits = inference(test_data_node, None, batch_size, phase_train)
 
-  pred = tf.argmax(logits, dimension=3)
+  if save_type == 'mask':
+    pred = tf.argmax(logits, dimension=3)
+  elif save_type =='prob':
+    pred = tf.nn.softmax(logits)
   # get moving avg
   variable_averages = tf.train.ExponentialMovingAverage(
                       MOVING_AVERAGE_DECAY)
@@ -535,7 +540,10 @@ def infer(FLAGS):
       # output_image to verify
       if FLAGS.save_image:
 #        skimage.io.imsave(log_dir + "/orig/" + os.path.basename(image_filename), image_batch[0])
-        writeImage(im[0], output_dir + "/" + os.path.basename(image_filename))
+        if save_type == 'mask':
+          writeImage(im[0], output_dir + "/" + os.path.basename(image_filename), save_type)
+        elif save_type == 'prob':
+          writeImage(im[0], output_dir + "/" + os.path.basename(image_filename), save_type, FLAGS.save_dim)
 
     print("total time elapsed: {} s".format(total_time_elapsed))
     print("evarage time elapsed: {} s".format(total_time_elapsed/img_count))

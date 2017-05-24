@@ -107,7 +107,7 @@ def _variable_with_weight_decay(name, use_gpu, shape, initializer, wd):
     tf.add_to_collection('losses', weight_decay)
   return var
 
-def writeImage(image, filename):
+def writeImage(image, filename, mode='mask', dim=None):
     """ store label data to colored image """
     #Sky = [128,128,128]
     #Building = [128,0,0]
@@ -115,21 +115,34 @@ def writeImage(image, filename):
     #Road_marking = [255,69,0]
     #Road = [128,64,128]
     #Pavement = [60,40,222]
-    r = image.copy()
-    g = image.copy()
-    b = image.copy()
-    #label_colours = np.array([Sky, Building, Pole, Road, Road_marking, Pavement])
-    label_colours = config.label['label_colours']
-    for l in range(0,config.label['num_classes']):
-        r[image==l] = label_colours[l,0]
-        g[image==l] = label_colours[l,1]
-        b[image==l] = label_colours[l,2]
-    rgb = np.zeros((image.shape[0], image.shape[1], 3))
-    rgb[:,:,0] = r/1.0
-    rgb[:,:,1] = g/1.0
-    rgb[:,:,2] = b/1.0
-    im = Image.fromarray(np.uint8(rgb))
-    im.save(filename)
+    if mode == 'mask':
+        r = image.copy()
+        g = image.copy()
+        b = image.copy()
+        #label_colours = np.array([Sky, Building, Pole, Road, Road_marking, Pavement])
+        label_colours = config.label['label_colours']
+        for l in range(0,config.label['num_classes']):
+            r[image==l] = label_colours[l,0]
+            g[image==l] = label_colours[l,1]
+            b[image==l] = label_colours[l,2]
+        rgb = np.zeros((image.shape[0], image.shape[1], 3))
+        rgb[:,:,0] = r/1.0
+        rgb[:,:,1] = g/1.0
+        rgb[:,:,2] = b/1.0
+        im = Image.fromarray(np.uint8(rgb))
+        im.save(filename)
+    elif mode == 'prob':
+        # set green color to probability map
+        prob_img = image[:,:,dim]
+        r = np.zeros_like(prob_img)
+        g = prob_img.copy() * 255
+        b = np.zeros_like(prob_img)
+        rgb = np.zeros((image.shape[0], image.shape[1], 3))
+        rgb[:,:,0] = r
+        rgb[:,:,1] = g
+        rgb[:,:,2] = b
+        im = Image.fromarray(np.uint8(rgb))
+        im.save(filename)
 
 def storeImageQueue(data, labels, step):
   """ data and labels are all numpy arrays """

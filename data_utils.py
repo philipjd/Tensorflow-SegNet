@@ -119,6 +119,27 @@ def transparent_mask(path_mask, path_raw, path_out):
         out = cv2.addWeighted(raw, 0.5, overlay, 0.5, 0)
         cv2.imwrite(out_name, out)
 
+def prob_mask(path_mask, path_raw, path_out):
+    if not os.path.isdir(path_out):
+        os.mkdir(path_out)
+    for fname in os.listdir(path_mask):
+        mask_name = path_mask + '/' + fname
+        raw_name = path_raw + '/' + fname
+        out_name = path_out + '/' + fname
+        mask = cv2.imread(mask_name)
+        raw = cv2.imread(raw_name)
+        #overlay = raw.copy()
+        #overlay[(mask>0)] = mask[(mask>0)]
+        #for i in range(overlay.shape[0]):
+            #for j in range(overlay.shape[1]):
+                #if mask[i][j][0] == 0 and mask[i][j][1] == 0 and mask[i][j][2] == 0:
+                    #continue
+                #overlay[i][j][0] = mask[i][j][0]
+                #overlay[i][j][1] = mask[i][j][1]
+                #overlay[i][j][2] = mask[i][j][2]
+        out = cv2.addWeighted(raw, 1.0, mask, 1.0, 0)
+        cv2.imwrite(out_name, out)
+
 def _msg_to_png_file(msg, path, flip):
     img = bridge.imgmsg_to_cv2(msg)
     if flip:
@@ -451,6 +472,8 @@ if __name__ == '__main__':
         resize_image(args.infile)
     elif args.func == 'mask':
         transparent_mask(args.maskpath, args.inpath, args.outpath)
+    elif args.func == 'probmask':
+        prob_mask(args.maskpath, args.inpath, args.outpath)
     elif args.func == 'rosbag_img_show':
         bag = rosbag.Bag(args.bag)
         rosbag_image_show(bag, args.topic)
