@@ -28,11 +28,11 @@ def preprocess_road_label(path):
         img = cv2.imread(filename)
         shape = (img.shape[0], img.shape[1], 1)
         img_proc = np.zeros(shape, np.uint8)
-        #img_proc[img[:,:,0] > 0] = [1]
-        for i in range(shape[0]):
-            for j in range(shape[1]):
-                if img[i][j][0] > 0:
-                    img_proc[i][j][0] = 1
+        img_proc[img[:,:,0] > 0] = [1]
+        #for i in range(shape[0]):
+            #for j in range(shape[1]):
+                #if img[i][j][0] > 0:
+                    #img_proc[i][j][0] = 1
                         
         cv2.imwrite(filename, img_proc)
 
@@ -53,7 +53,7 @@ def split_train_valid_set(path, mode='road'):
         #fname_label = '_'.join([name, 'proc']) + ext
         train_label = label_subpath + fname
         
-        if random.random() < 0.05:
+        if random.random() < 0.1:
             valid_outfile.write(' '.join([train_img, train_label]) + '\n')
         else:
             train_outfile.write(' '.join([train_img, train_label]) + '\n')
@@ -64,7 +64,7 @@ def split_train_valid_set(path, mode='road'):
 def calc_class_weight(path, mode='road'):
     class_map = {'p':0, 'n':0}
     for fname in os.listdir(path):
-        if 'proc' in fname:
+        if 'hls' not in fname and 'shadow' not in fname:
             #print(os.path.join(path, fname))
             img = cv2.imread(os.path.join(path, fname))
             #print(img.shape)
@@ -79,6 +79,31 @@ def calc_class_weight(path, mode='road'):
                         #class_map[lbl] = 1
 
     print(class_map)
+
+def crop_image(path, top_rate, bot_rate, left_rate, right_rate):
+    dir = os.path.dirname(path)
+    fd = open(path)
+    cnt = 0
+    for line in fd:
+        line = line.strip()
+        filename = dir + '/' + line
+        #print(filename)
+        img = cv2.imread(filename)
+        if cnt == 0:
+            shape = img.shape
+            top = int(round(shape[0] * top_rate))
+            bot = int(round(shape[0] * bot_rate))
+            left = int(round(shape[1] * left_rate))
+            right = int(round(shape[1] * right_rate))
+
+            print("cropped height: [{}, {}), width: [{}, {})".format(top, bot, left, right))
+
+        print("cropping {}".format(line))
+        cropped = img[top:bot, left:right]
+        
+        cv2.imwrite(filename, cropped)
+        cnt += 1
+
 
 def resize_image(path):
     dir = os.path.dirname(path)
@@ -244,7 +269,7 @@ def _add_random_shadow_v(image, side, shadow_rate):
 def _add_random_shadow_h(image, shadow_rate):
     height = image.shape[0]
     width = image.shape[1]
-    margin = 0.5 * height
+    margin = 0.2 * height
     left_y = 0
     left_x = margin + (height - margin)*np.random.uniform()
     right_x = margin + (height - margin)*np.random.uniform()
@@ -269,7 +294,7 @@ def _add_random_shadow_h(image, shadow_rate):
 def _add_random_shadow_c(image, shadow_rate):
     height = image.shape[0]
     width = image.shape[1]
-    margin = 0.75 * height
+    margin = 0.2 * height
     left_y = 0
     left_x1 = margin + (height - margin)*np.random.uniform()
     left_x2 = margin + (height - margin)*np.random.uniform()
@@ -299,8 +324,160 @@ def _add_random_shadow_c(image, shadow_rate):
 
     return out
 
+def _add_fake_line(image, shadow_rate, lw=5):
+    height = image.shape[0]
+    width = image.shape[1]
+    top_margin = 0.2 * height
+    #bot_margin = 0.1 * height
+    bot_left_margin = 0.2 * width
+    bot_right_margin = 0.2 * width
+    top_left_margin = 0.4 * width
+    top_right_margin = 0.4 * width
+
+    #top_x = top_margin + (height - top_margin - bot_margin) * np.random.uniform()
+    top_x = top_margin
+    top_left_y = top_left_margin + (width - top_left_margin - top_right_margin)*np.random.uniform()
+    bot_left_y = bot_left_margin + (width - bot_left_margin - bot_right_margin)*np.random.uniform()
+    bot_x = height
+
+    top_right_y = top_left_y + lw
+    bot_right_y = bot_left_y + lw
+
+    image_hls = image.copy()
+    shadow_mask = 0*image_hls[:,:,1]
+    X_m, Y_m = np.mgrid[0:image.shape[0],0:image.shape[1]]
+    shadow_mask[np.logical_and(X_m >= top_x,
+                np.logical_and((X_m-top_x)*(bot_left_y-top_left_y) - (bot_x - top_x)*(Y_m-top_left_y) <=0,
+                               (X_m-top_x)*(bot_right_y-top_right_y) - (bot_x - top_x)*(Y_m-top_right_y) >=0))]=1
+
+    cond = shadow_mask==1
+
+    image_hls = image_hls.astype(np.float64)
+    image_hls[:,:,1][cond] = image_hls[:,:,1][cond]*shadow_rate
+    image_hls[:,:,1] = np.where(image_hls[:,:,1] > 255, 255, image_hls[:,:,1])
+    image_hls[:,:,1] = np.where(image_hls[:,:,1] < 0, 0, image_hls[:,:,1])
+    image_hls = image_hls.astype(np.uint8)
+    out = cv2.cvtColor(image_hls,cv2.COLOR_HLS2RGB)
+
+    return out
+
+def _add_fake_patch(image, shadow_rate, pn=8):
+    height = image.shape[0]
+    width = image.shape[1]
+    top_margin = 0.2 * height
+    #bot_margin = 0.1 * height
+    left_margin = 0.2 * width
+    right_margin = 0.2 * width
+
+    # generate points and arrange them in clockwise order
+    tmpy1 = np.random.uniform(left_margin, width - right_margin)
+    tmpy2 = np.random.uniform(left_margin, width - right_margin)
+
+    left_y = min(tmpy1, tmpy2)
+    right_y = max(tmpy1, tmpy2)
+
+    left_x = np.random.uniform(top_margin, height)
+    right_x = np.random.uniform(top_margin, height)
+
+    up_lb = max(left_x, right_x)
+    down_ub = min(left_x, right_x)
+
+    left_pt = [left_y, left_x]
+    right_pt = [right_y, right_x]
+
+    up_pts_num = np.random.randint(pn - 1)
+    down_pts_num = pn - 2 - up_pts_num
+
+    vertices = [left_pt]
+    ub = top_margin
+    lb = up_lb
+    leftb = left_y
+    rightb = right_y
+    for i in range(up_pts_num):
+        x = np.random.uniform(ub, lb)
+        y = np.random.uniform(leftb, rightb)
+        vertices.append([y,x])
+        leftb = y
+    vertices.append(right_pt)
+    ub = down_ub
+    lb = height
+    leftb = left_y
+    rightb = right_y
+    for i in range(down_pts_num):
+        x = np.random.uniform(ub, lb)
+        y = np.random.uniform(leftb, rightb)
+        vertices.append([y,x])
+        rightb = y
+
+
+    image_hls = image.copy()
+    shadow_mask = 0*image_hls[:,:,1]
+
+    cv2.fillConvexPoly(shadow_mask, np.array(vertices, dtype=np.int32), 255)
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE,(5,5))
+    shadow_mask = cv2.morphologyEx(shadow_mask, cv2.MORPH_CLOSE, kernel)
+    shadow_mask = cv2.morphologyEx(shadow_mask, cv2.MORPH_OPEN, kernel)
+
+    cond = shadow_mask>0
+
+    image_hls = image_hls.astype(np.float64)
+    image_hls[:,:,1][cond] = image_hls[:,:,1][cond]*shadow_rate
+    image_hls[:,:,1] = np.where(image_hls[:,:,1] > 255, 255, image_hls[:,:,1])
+    image_hls[:,:,1] = np.where(image_hls[:,:,1] < 0, 0, image_hls[:,:,1])
+    image_hls = image_hls.astype(np.uint8)
+    out = cv2.cvtColor(image_hls,cv2.COLOR_HLS2RGB)
+
+    return out
+
+def _add_noise(noise_typ, image, p):
+    if noise_typ == "gauss":
+        row,col,ch= image.shape
+        stddev = p
+        gauss = np.random.normal(0, stddev, (row,col,ch))
+        gauss = gauss.reshape(row,col,ch)
+        out = image + gauss
+        out = np.clip(out, 0, 255)
+        out = out.astype(np.uint8)
+
+        return out
+
+    elif noise_typ == "s&p":
+        row,col,ch = image.shape
+        rate = p
+        sp_noise = np.random.randint(0, 256, (row, col, ch)).reshape(row, col, ch)
+        white_thres = int(256 * (1-rate))
+        black_thres = int(256 * rate)
+        white = sp_noise >= white_thres
+        black = sp_noise < black_thres
+        out = image.copy()
+        out[white] = 255
+        out[black] = 0
+
+        return out
+
 
 def augment_image(inpath, maskpath):
+    # add noise
+    for fname in os.listdir(inpath):
+        name, ext = os.path.splitext(fname)
+        filename = inpath + '/' + fname
+        maskname = maskpath + '/' + fname
+
+        print("adding noise {}".format(fname))
+        # gauss noise
+        outimg = _add_noise('gauss', img, 20)
+        outname = name + '_noise_g' + ext
+        cv2.imwrite(inpath + '/' + outname, outimg)
+        outmaskname = maskpath + '/' + outname
+        os.system('cp {} {}'.format(maskname, outmaskname))
+
+        # s&p noise
+        outimg = _add_noise('s&p', img, 0.005)
+        outname = name + '_noise_sp' + ext
+        cv2.imwrite(inpath + '/' + outname, outimg)
+        outmaskname = maskpath + '/' + outname
+        os.system('cp {} {}'.format(maskname, outmaskname))
+
     for fname in os.listdir(inpath):
         name, ext = os.path.splitext(fname)
         filename = inpath + '/' + fname
@@ -321,8 +498,10 @@ def augment_image(inpath, maskpath):
         #outmaskname = maskpath + '/' + outname
         #os.system('cp {} {}'.format(maskname, outmaskname))
 
-        print("augmenting Hue/Lightness/Saturation/Contrast")
+        print("augmenting {}".format(fname))
+
         shadow_rate_list = [0.3, 0.5]
+        patch_rate_list = [0.1, 0.3, 0.5]
         light_rate_list = [0.3, 0.5, 0.7, 0.9, 1.1, 1.3, 1.5, 1.7]
         hls = cv2.cvtColor(img, cv2.COLOR_RGB2HLS)
         for rate in light_rate_list:
@@ -367,7 +546,23 @@ def augment_image(inpath, maskpath):
             outmaskname = maskpath + '/' + outname
             os.system('cp {} {}'.format(maskname, outmaskname))
 
-        for i in range(-2, 3):
+        for i,rate in enumerate(patch_rate_list):
+            oname = name + '_shadow{}'.format(rate)
+            # fake line
+            outimg = _add_fake_line(hls, rate)
+            outname = oname + '_line' + ext
+            cv2.imwrite(inpath + '/' + outname, outimg)
+            outmaskname = maskpath + '/' + outname
+            os.system('cp {} {}'.format(maskname, outmaskname))
+
+            # fake patch
+            outimg = _add_fake_patch(hls, rate)
+            outname = oname + '_patch' + ext
+            cv2.imwrite(inpath + '/' + outname, outimg)
+            outmaskname = maskpath + '/' + outname
+            os.system('cp {} {}'.format(maskname, outmaskname))
+
+        for i in range(-4, 5):
             if i == 0:
                 continue
             # Hue
@@ -418,29 +613,30 @@ def augment_image(inpath, maskpath):
             # Contrast
             tmp = img.copy()
             factor = 1. + i * 0.3
-            r = tmp[:,:,0].astype('float32')
-            g = tmp[:,:,1].astype('float32')
-            b = tmp[:,:,2].astype('float32')
-            r = (r - r_mean) * factor + r_mean
-            r = np.where(r > 255, 255, r)
-            r = np.where(r < 0, 0, r)
-            r = r.astype('uint8')
-            g = (g - g_mean) * factor + g_mean
-            g = np.where(g > 255, 255, g)
-            g = np.where(g < 0, 0, g)
-            g = g.astype('uint8')
-            b = (b - b_mean) * factor + b_mean
-            b = np.where(b > 255, 255, b)
-            b = np.where(b < 0, 0, b)
-            b = b.astype('uint8')
-            tmp[:,:,0] = r
-            tmp[:,:,1] = g
-            tmp[:,:,2] = b
+            if factor > 0:
+                r = tmp[:,:,0].astype('float32')
+                g = tmp[:,:,1].astype('float32')
+                b = tmp[:,:,2].astype('float32')
+                r = (r - r_mean) * factor + r_mean
+                r = np.where(r > 255, 255, r)
+                r = np.where(r < 0, 0, r)
+                r = r.astype('uint8')
+                g = (g - g_mean) * factor + g_mean
+                g = np.where(g > 255, 255, g)
+                g = np.where(g < 0, 0, g)
+                g = g.astype('uint8')
+                b = (b - b_mean) * factor + b_mean
+                b = np.where(b > 255, 255, b)
+                b = np.where(b < 0, 0, b)
+                b = b.astype('uint8')
+                tmp[:,:,0] = r
+                tmp[:,:,1] = g
+                tmp[:,:,2] = b
 
-            outname = name + '_hls_c' + str(factor) + ext
-            cv2.imwrite(inpath + '/' + outname, tmp)
-            outmaskname = maskpath + '/' + outname
-            os.system('cp {} {}'.format(maskname, outmaskname))
+                outname = name + '_hls_c' + str(factor) + ext
+                cv2.imwrite(inpath + '/' + outname, tmp)
+                outmaskname = maskpath + '/' + outname
+                os.system('cp {} {}'.format(maskname, outmaskname))
 
 
 
@@ -455,6 +651,10 @@ if __name__ == '__main__':
     parser.add_argument("--bag", type=str, help="ros bag")
     parser.add_argument("--topic", type=str, help="ros topic")
     parser.add_argument("--prefix", default='', type=str, help="bag extrated image prefix")
+    parser.add_argument("--toprate", default=0.0, type=float, help="for image cropping")
+    parser.add_argument("--botrate", default=1.0, type=float, help="for image cropping")
+    parser.add_argument("--leftrate", default=0.0, type=float, help="for image cropping")
+    parser.add_argument("--rightrate", default=1.0, type=float, help="for image cropping")
 
     args = parser.parse_args()
 
@@ -464,6 +664,8 @@ if __name__ == '__main__':
         split_train_valid_set(args.inpath, mode=args.mode)
     elif args.func == 'road_weight':
         calc_class_weight(args.inpath, mode=args.mode)
+    elif 'crop' == args.func:
+        crop_image(args.infile, args.toprate, args.botrate, args.leftrate, args.rightrate)
     elif 'resize' == args.func:
         #type = args.func.split('_')[1]
         #if type != 'sample' and type != 'label':

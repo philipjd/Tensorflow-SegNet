@@ -9,15 +9,15 @@ INITIAL_LEARNING_RATE = 0.001      # Initial learning rate.
 EVAL_BATCH_SIZE = 5
 BATCH_SIZE = 10
 
-NUM_EXAMPLES_PER_EPOCH_FOR_TRAIN = 2033
-NUM_EXAMPLES_PER_EPOCH_FOR_TEST = 109
+NUM_EXAMPLES_PER_EPOCH_FOR_TRAIN = 150000
+NUM_EXAMPLES_PER_EPOCH_FOR_TEST = 216
 NUM_EXAMPLES_PER_EPOCH_FOR_EVAL = 1
 
 MAX_STEPS = 20000
 
 # image config
-IMAGE_HEIGHT = 300
-IMAGE_WIDTH = 400
+IMAGE_HEIGHT = 240
+IMAGE_WIDTH = 640
 IMAGE_DEPTH = 3
 
 # prediction layout config
@@ -34,8 +34,8 @@ label = {
     'num_classes' : 2,
     'label_colours' : np.array([Other, Road]),
     'loss_weight' : np.array([
-        1.0,
-        7.0
+        1.462,
+        17.614
         ])
     }
 
